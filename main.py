@@ -37,15 +37,22 @@ LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID')) if os.getenv('LOG_CHANNEL_ID')
 # Load environment variables
 load_dotenv()
 
-# Configure logging for cloud deployment
+# Configure logging for immediate output with proper encoding
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data/bot.log')
-    ]
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('bot.log', mode='a', encoding='utf-8')
+    ],
+    force=True  # Override any existing loggers
 )
+
+# Ensure stdout/stderr use UTF-8 encoding
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', line_buffering=True)
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +70,136 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 warning_system = PersistentWarningSystem()
 code_detector = CodeDetector()
 error_recovery = ErrorRecoverySystem(bot, warning_system)
+
+# Global error handlers
+@bot.event
+async def on_command_error(ctx, error):
+    """Handle command errors gracefully"""
+    
+    # Ignore command not found errors (less spam)
+    if isinstance(error, commands.CommandNotFound):
+        return
+    
+    # Handle specific error types with user-friendly messages
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="❌ Permission Error",
+            description="You don't have permission to use this command.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        
+    elif isinstance(error, commands.BotMissingPermissions):
+        embed = discord.Embed(
+            title="❌ Bot Permission Error",
+            description="I don't have the necessary permissions to execute this command.",
+            color=0xff0000
+        )
+        missing_perms = ", ".join(error.missing_permissions)
+        embed.add_field(name="Missing Permissions", value=missing_perms, inline=False)
+        await ctx.send(embed=embed)
+        
+    elif isinstance(error, commands.MissingRequiredArgument):
+        embed = discord.Embed(
+            title="❌ Missing Argument",
+            description=f"Missing required argument: `{error.param.name}`",
+            color=0xff0000
+        )
+        embed.add_field(name="Usage", value=f"`{ctx.prefix}{ctx.command.qualified_name} {ctx.command.signature}`", inline=False)
+        await ctx.send(embed=embed)
+        
+    elif isinstance(error, commands.BadArgument):
+        embed = discord.Embed(
+            title="❌ Invalid Argument",
+            description="One or more arguments are invalid.",
+            color=0xff0000
+        )
+        embed.add_field(name="Usage", value=f"`{ctx.prefix}{ctx.command.qualified_name} {ctx.command.signature}`", inline=False)
+        embed.add_field(name="Error Details", value=str(error), inline=False)
+        await ctx.send(embed=embed)
+        
+    elif isinstance(error, commands.ChannelNotFound):
+        embed = discord.Embed(
+            title="❌ Channel Not Found",
+            description="Could not find the specified channel.",
+            color=0xff0000
+        )
+        embed.add_field(name="Tip", value="Make sure to use #channel-name or verify the channel exists.", inline=False)
+        await ctx.send(embed=embed)
+        
+    elif isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="❌ User Not Found",
+            description="Could not find the specified user.",
+            color=0xff0000
+        )
+        embed.add_field(name="Tip", value="Make sure to use @username or verify the user is in this server.", inline=False)
+        await ctx.send(embed=embed)
+        
+    elif isinstance(error, commands.CommandOnCooldown):
+        embed = discord.Embed(
+            title="⏰ Command on Cooldown",
+            description=f"Please wait {error.retry_after:.1f} seconds before using this command again.",
+            color=0xffaa00
+        )
+        await ctx.send(embed=embed)
+        
+    else:
+        # Handle unexpected errors
+        embed = discord.Embed(
+            title="❌ An Error Occurred",
+            description="Something went wrong while executing this command.",
+            color=0xff0000
+        )
+        
+        # Add error details for admins
+        if class_bot.has_admin_role(ctx.author):
+            error_details = str(error)[:1000]  # Limit length
+            embed.add_field(name="Error Details (Admin Only)", value=f"```\n{error_details}\n```", inline=False)
+        
+        await ctx.send(embed=embed)
+        
+        # Log the full error for debugging
+        logger.error(f"Command error in {ctx.command}: {error}", exc_info=True)
+        
+        # Send to log channel if configured
+        if LOG_CHANNEL_ID:
+            try:
+                log_channel = bot.get_channel(LOG_CHANNEL_ID)
+                if log_channel and ctx.channel.id != LOG_CHANNEL_ID:
+                    error_embed = discord.Embed(
+                        title="🚨 Command Error",
+                        description=f"Error in command `{ctx.command}` by {ctx.author.mention}",
+                        color=0xff0000
+                    )
+                    error_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+                    error_embed.add_field(name="Command", value=f"`{ctx.message.content}`", inline=False)
+                    error_embed.add_field(name="Error", value=f"```\n{str(error)[:500]}\n```", inline=False)
+                    await log_channel.send(embed=error_embed)
+            except Exception as log_error:
+                logger.error(f"Failed to send error log: {log_error}")
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    """Handle general bot errors"""
+    import traceback
+    error_msg = traceback.format_exc()
+    logger.error(f"Bot error in event {event}: {error_msg}")
+    
+    # Send to log channel if configured
+    if LOG_CHANNEL_ID:
+        try:
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="🚨 Bot Error",
+                    description=f"Error in event: `{event}`",
+                    color=0xff0000
+                )
+                error_embed.add_field(name="Error", value=f"```\n{error_msg[:1000]}\n```", inline=False)
+                await log_channel.send(embed=error_embed)
+        except Exception as log_error:
+            logger.error(f"Failed to send error log: {log_error}")
 
 
 class ClassBot:
@@ -255,11 +392,13 @@ class ConfirmView(discord.ui.View):
 
     @discord.ui.button(label='Confirm', style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
         self.value = True
         self.stop()
 
     @discord.ui.button(label='Cancel', style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
         self.value = False
         self.stop()
 
@@ -295,6 +434,324 @@ async def help_command(ctx):
     embed.set_footer(text="Contact an admin if you need the appropriate role.")
     
     await ctx.send(embed=embed)
+
+@bot.command(name='classbot')
+async def classbot_hello(ctx):
+    """Friendly greeting command"""
+    
+    # Create a friendly greeting embed
+    embed = discord.Embed(
+        title="👋 Hello!",
+        description=f"Hello {ctx.author.display_name}! 🤖",
+        color=0x00ff00
+    )
+    
+    embed.add_field(
+        name="🎯 What I Do",
+        value="I'm your friendly Class Bot! I help monitor code and keep the server organized.",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="💡 Need Help?",
+        value="Use `!help_classbot` to see all my commands and features!",
+        inline=False
+    )
+    
+    # Add a fun fact or status
+    guild_member_count = len(ctx.guild.members) if ctx.guild else "unknown"
+    embed.add_field(
+        name="📊 Server Stats",
+        value=f"Watching over {guild_member_count} members in this server!",
+        inline=False
+    )
+    
+    embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='remove_roleless')
+async def remove_roleless_users(ctx):
+    """Remove all users without any role (Admin only)"""
+    
+    # Check if user has admin role
+    if not class_bot.has_admin_role(ctx.author):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    # Get all members without roles (excluding @everyone)
+    roleless_members = []
+    excluded_members = []
+    
+    for member in ctx.guild.members:
+        if len(member.roles) == 1 and member.roles[0].name == "@everyone":
+            # Exclude all bots (including ClassBot)
+            if member.bot:
+                excluded_members.append(f"🤖 {member.display_name} (bot)")
+                continue
+            # Extra safety: Don't include the bot itself
+            if member.id == bot.user.id:
+                excluded_members.append(f"🤖 {member.display_name} (ClassBot)")
+                continue
+            # Don't include server owner for safety
+            if member.id == ctx.guild.owner_id:
+                excluded_members.append(f"👑 {member.display_name} (server owner)")
+                continue
+            
+            roleless_members.append(member)
+    
+    # Log exclusions for transparency
+    if excluded_members:
+        logger.info(f"remove_roleless excluded {len(excluded_members)} members: {', '.join(excluded_members)}")
+    
+    if not roleless_members:
+        if excluded_members:
+            embed = discord.Embed(
+                title="ℹ️ No Eligible Users Found",
+                description="No users without roles found to remove.",
+                color=0x0099ff
+            )
+            embed.add_field(
+                name="🛡️ Protected Users Excluded",
+                value=f"Found {len(excluded_members)} protected users (bots, server owner) that were automatically excluded.",
+                inline=False
+            )
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send("✅ No users found without roles.")
+        return
+    
+    # Create confirmation embed
+    embed = discord.Embed(
+        title="⚠️ Confirmation Required",
+        description=f"Are you sure you want to remove **{len(roleless_members)}** users without roles?",
+        color=0xff0000
+    )
+    
+    member_list = "\n".join([f"• {member.display_name} ({member.name})" for member in roleless_members[:10]])
+    if len(roleless_members) > 10:
+        member_list += f"\n... and {len(roleless_members) - 10} more"
+    
+    embed.add_field(name="Users to be removed:", value=member_list, inline=False)
+    
+    # Add information about excluded members for transparency
+    if excluded_members:
+        excluded_info = f"🛡️ **{len(excluded_members)} protected users excluded** (bots, server owner)"
+        embed.add_field(name="Protected Users:", value=excluded_info, inline=False)
+    
+    embed.set_footer(text="This action cannot be undone! Bots and server owner are automatically protected.")
+    
+    # Send confirmation message with buttons
+    view = ConfirmView()
+    message = await ctx.send(embed=embed, view=view)
+    
+    # Wait for user response
+    await view.wait()
+    
+    if view.value is None:
+        await message.edit(content="⏰ Confirmation timed out. Operation cancelled.", embed=None, view=None)
+        return
+    elif view.value:
+        # User confirmed, proceed with removal
+        removed_count = 0
+        failed_removals = []
+        
+        progress_embed = discord.Embed(
+            title="🔄 Removing users...",
+            description="This may take a moment.",
+            color=0xffa500
+        )
+        await message.edit(embed=progress_embed, view=None)
+        
+        for member in roleless_members:
+            try:
+                await member.kick(reason=f"Removed by {ctx.author.name} - No role assigned")
+                removed_count += 1
+                await asyncio.sleep(1)  # Rate limiting
+            except discord.errors.Forbidden:
+                failed_removals.append(f"{member.display_name} (insufficient permissions)")
+            except discord.errors.HTTPException as e:
+                failed_removals.append(f"{member.display_name} (error: {str(e)})")
+        
+        # Send results
+        result_embed = discord.Embed(
+            title="✅ Operation Complete",
+            color=0x00ff00
+        )
+        result_embed.add_field(name="Successfully Removed", value=str(removed_count), inline=True)
+        result_embed.add_field(name="Failed", value=str(len(failed_removals)), inline=True)
+        
+        if failed_removals:
+            failure_list = "\n".join(failed_removals[:5])
+            if len(failed_removals) > 5:
+                failure_list += f"\n... and {len(failed_removals) - 5} more"
+            result_embed.add_field(name="Failed Removals", value=failure_list, inline=False)
+        
+        await message.edit(embed=result_embed, view=None)
+        
+        # Log the action
+        logger.info(f"Mass removal completed by {ctx.author.name}: {removed_count} removed, {len(failed_removals)} failed")
+        
+        # Send to log channel if configured
+        if LOG_CHANNEL_ID:
+            try:
+                log_channel = bot.get_channel(LOG_CHANNEL_ID)
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="🚨 Mass User Removal",
+                        description=f"Admin {ctx.author.mention} removed {removed_count} roleless users",
+                        color=0xff0000
+                    )
+                    log_embed.add_field(name="Channel", value=ctx.channel.mention, inline=True)
+                    log_embed.add_field(name="Total Removed", value=str(removed_count), inline=True)
+                    log_embed.add_field(name="Failed", value=str(len(failed_removals)), inline=True)
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                logger.error(f"Failed to send log message: {e}")
+    else:
+        # User cancelled
+        await message.edit(content="❌ Operation cancelled by user.", embed=None, view=None)
+
+@bot.command(name='clear_channel')
+async def clear_channel_messages(ctx, channel: discord.TextChannel = None, limit: int = None):
+    """Clear all messages from a specified channel (Admin only)"""
+    
+    if not class_bot.has_admin_role(ctx.author):
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+    
+    # If no channel provided, show usage
+    if channel is None:
+        await ctx.send("❌ Please specify a channel. Usage: `!clear_channel #channel [limit]`")
+        return
+    
+    # Create confirmation embed
+    if limit is None:
+        embed = discord.Embed(
+            title="⚠️ Clear Channel Confirmation",
+            description=f"Are you sure you want to **delete ALL messages** from {channel.mention}?",
+            color=0xff0000
+        )
+        
+        embed.add_field(
+            name="⚠️ Warning", 
+            value="This will delete **ALL messages** in the channel!\nThis action **cannot be undone**!",
+            inline=False
+        )
+        embed.add_field(
+            name="Channel Info",
+            value=f"**Channel:** {channel.mention}\n**Requested by:** {ctx.author.mention}",
+            inline=False
+        )
+        embed.set_footer(text="Use '!clear_channel #channel <number>' to delete a specific number of messages instead.")
+    else:
+        # Limited clear with specific number
+        if limit <= 0:
+            await ctx.send("❌ Message limit must be a positive number.")
+            return
+        
+        if limit > 1000:
+            await ctx.send("❌ Cannot delete more than 1000 messages at once. Use the command without a number to clear all messages.")
+            return
+        
+        embed = discord.Embed(
+            title="⚠️ Clear Messages Confirmation",
+            description=f"Are you sure you want to delete the **last {limit} messages** from {channel.mention}?",
+            color=0xff9900
+        )
+        
+        embed.add_field(
+            name="Action Details",
+            value=f"**Channel:** {channel.mention}\n**Messages to delete:** {limit}\n**Requested by:** {ctx.author.mention}",
+            inline=False
+        )
+        embed.set_footer(text="This action cannot be undone!")
+    
+    # Send confirmation message with buttons
+    view = ConfirmView()
+    confirmation_msg = await ctx.send(embed=embed, view=view)
+    
+    # Wait for user response
+    await view.wait()
+    
+    if view.value is None:
+        await confirmation_msg.edit(content="⏰ Confirmation timed out. Channel clearing cancelled.", embed=None, view=None)
+        return
+    elif view.value:
+        # User confirmed, proceed with clearing
+        try:
+            # Immediate feedback
+            progress_embed = discord.Embed(
+                title="🔄 Clearing messages...",
+                description=f"{'Deleting all messages' if limit is None else f'Deleting last {limit} messages'} from {channel.mention}...",
+                color=0xffa500
+            )
+            await confirmation_msg.edit(embed=progress_embed, view=None)
+            
+            deleted_count = 0
+            
+            if limit is None:
+                # Optimized bulk delete for all messages
+                while True:
+                    # Use bulk delete in chunks of 100 (Discord's limit for bulk delete)
+                    deleted = await channel.purge(limit=100, bulk=True)
+                    if not deleted:
+                        break
+                    deleted_count += len(deleted)
+                    
+                    # Update progress every 200 messages for very large channels
+                    if deleted_count % 200 == 0:
+                        progress_embed.description = f"Deleted {deleted_count} messages from {channel.mention}... (continuing)"
+                        try:
+                            await confirmation_msg.edit(embed=progress_embed)
+                        except:
+                            pass  # Continue even if edit fails
+            else:
+                # Delete specific number of messages
+                deleted = await channel.purge(limit=limit, bulk=True)
+                deleted_count = len(deleted)
+            
+            # Send completion message
+            result_embed = discord.Embed(
+                title="✅ Channel Cleared Successfully",
+                description=f"Deleted **{deleted_count} messages** from {channel.mention}",
+                color=0x00ff00
+            )
+            result_embed.add_field(name="Cleared by", value=ctx.author.mention, inline=True)
+            result_embed.add_field(name="Channel", value=channel.mention, inline=True)
+            await confirmation_msg.edit(embed=result_embed, view=None)
+            
+            # Log the action
+            logger.info(f"Channel cleared by {ctx.author.name}: {deleted_count} messages from #{channel.name}")
+            
+            # Send to log channel if configured
+            if LOG_CHANNEL_ID and ctx.channel.id != LOG_CHANNEL_ID:
+                try:
+                    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="🧹 Channel Cleared",
+                            description=f"Admin {ctx.author.mention} cleared {deleted_count} messages from {channel.mention}",
+                            color=0xff9900
+                        )
+                        await log_channel.send(embed=log_embed)
+                except Exception as e:
+                    logger.error(f"Failed to send log message: {e}")
+                    
+        except discord.errors.Forbidden:
+            await confirmation_msg.edit(
+                content="❌ I don't have permission to delete messages in that channel.",
+                embed=None, view=None
+            )
+        except Exception as e:
+            await confirmation_msg.edit(
+                content=f"❌ An error occurred while clearing messages: {str(e)}",
+                embed=None, view=None
+            )
+            logger.error(f"Error clearing channel: {e}")
+    else:
+        # User cancelled
+        await confirmation_msg.edit(content="❌ Channel clearing cancelled by user.", embed=None, view=None)
 
 
 if __name__ == "__main__":

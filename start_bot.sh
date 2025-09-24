@@ -4,8 +4,13 @@
 # Activate virtual environment
 source venv/bin/activate
 
-# Start bot in detached screen session (log to Windows directory)
-screen -dmS discord-bot python main.py > "/mnt/c/Users/rlfowler/Documents/TA/Discord Bot/bot.log" 2>&1
+# Set UTF-8 encoding environment variables
+export PYTHONIOENCODING=utf-8
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+
+# Start bot in detached screen session (unbuffered, proper encoding)
+screen -dmS discord-bot python -u main.py
 
 echo "✅ Discord bot started in screen session 'discord-bot'"
 echo "📋 Use 'screen -r discord-bot' to attach to the session"
