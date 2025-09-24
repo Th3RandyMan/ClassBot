@@ -135,3 +135,5 @@ dmypy.json
 bot_logs/
 user_data/
 temp/
+bot.log
+*.log
