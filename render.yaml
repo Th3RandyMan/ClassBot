@@ -1,0 +1,26 @@
+services:
+  - type: background
+    name: class-bot
+    env: python
+    region: oregon
+    buildCommand: |
+      python -m pip install --upgrade pip &&
+      pip install -r requirements.txt &&
+      apt-get update &&
+      apt-get install -y tesseract-ocr tesseract-ocr-eng &&
+      apt-get install -y libgl1-mesa-glx libglib2.0-0 libtesseract-dev
+    startCommand: python main.py
+    plan: starter
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GUILD_ID  
+        sync: false
+      - key: ALLOWED_ROLE_NAME
+        value: ""
+      - key: ADMIN_ROLE_NAMES
+        value: "Professor,Teaching Assistant (TA)"
+      - key: LOG_CHANNEL_ID
+        sync: false
+      - key: PYTHONPATH
+        value: /opt/render/project/src

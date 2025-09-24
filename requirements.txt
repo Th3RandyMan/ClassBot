@@ -1,0 +1,13 @@
+# Core Discord bot functionality
+discord.py==2.3.2
+python-dotenv==1.0.0
+
+# Image processing and OCR
+Pillow==10.0.1
+pytesseract==0.3.10
+
+# HTTP requests
+requests==2.31.0
+
+# Python version compatibility
+setuptools>=65.0.0
