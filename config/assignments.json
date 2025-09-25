@@ -1,0 +1,11 @@
+{
+  "assignments": {},
+  "settings": {
+    "reminder_channel_id": null,
+    "default_reminder_schedule": [
+      "1d",
+      "2h"
+    ],
+    "timezone": "UTC"
+  }
+}

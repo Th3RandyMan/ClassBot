@@ -1,0 +1,58 @@
+{
+  "enabled": true,
+  "sensitivity": "medium",
+  "action_on_detection": "warn",
+  "whitelist": [],
+  "word_lists": {
+    "profanity": [
+      "fuck",
+      "shit",
+      "bitch",
+      "damn",
+      "ass",
+      "hell",
+      "bastard",
+      "crap",
+      "piss",
+      "whore",
+      "slut"
+    ],
+    "hate_speech": [
+      "nigger",
+      "faggot",
+      "retard",
+      "nazi",
+      "hitler",
+      "jew",
+      "kike",
+      "spic",
+      "chink",
+      "terrorist"
+    ],
+    "inappropriate": [
+      "porn",
+      "sex",
+      "nude",
+      "naked",
+      "horny",
+      "rape",
+      "suicide"
+    ]
+  },
+  "patterns": {
+    "character_replacement": true,
+    "spacing_evasion": true,
+    "repeat_characters": true,
+    "backwards_words": true
+  },
+  "exceptions": {
+    "educational_terms": [
+      "hell",
+      "damn"
+    ],
+    "common_words": [
+      "ass",
+      "hell"
+    ]
+  }
+}

@@ -4,6 +4,9 @@ Contains default settings and configuration options
 """
 
 import os
+import sys
+import logging
+import platform
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -17,9 +20,7 @@ class BotConfig:
     
     # Role Configuration
     ALLOWED_ROLE_NAME = os.getenv('ALLOWED_ROLE_NAME', 'Student')
-    ADMIN_ROLE_NAME = os.getenv('ADMIN_ROLE_NAME', 'Admin')
-    
-    # Logging
+    ADMIN_ROLE_NAMES = [name.strip() for name in os.getenv('ADMIN_ROLE_NAMES', 'Professor,Teaching Assistant (TA)').split(',')]
     LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID')) if os.getenv('LOG_CHANNEL_ID') else None
     
     # Bot Settings
@@ -36,6 +37,25 @@ class BotConfig:
     
     # Tesseract Configuration (for Windows)
     TESSERACT_PATH = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    
+    @classmethod
+    def setup_logging(cls):
+        """Setup logging configuration for the bot"""
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler('bot.log', mode='a', encoding='utf-8')
+            ],
+            force=True  # Override any existing loggers
+        )
+        
+        # Ensure stdout/stderr use UTF-8 encoding
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8', line_buffering=True)
     
     @classmethod
     def validate_config(cls):
@@ -56,7 +76,7 @@ class BotConfig:
         print("=== Class Bot Configuration ===")
         print(f"Guild ID: {cls.GUILD_ID}")
         print(f"Allowed Role: {cls.ALLOWED_ROLE_NAME}")
-        print(f"Admin Role: {cls.ADMIN_ROLE_NAME}")
+        print(f"Admin Roles: {cls.ADMIN_ROLE_NAMES}")
         print(f"Log Channel ID: {cls.LOG_CHANNEL_ID}")
         print(f"Command Prefix: {cls.COMMAND_PREFIX}")
         print("===============================")

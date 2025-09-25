@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "disabled_until": null,
+  "disabled_reason": null,
+  "disabled_by": null,
+  "disabled_timestamp": null,
+  "maintenance_mode": false,
+  "allowed_commands_when_disabled": [
+    "bot_enable",
+    "bot_status",
+    "bot_kill",
+    "help"
+  ]
+}
